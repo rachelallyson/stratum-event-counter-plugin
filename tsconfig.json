@@ -6,7 +6,10 @@
         "target": "ES2019",
         "moduleResolution": "Node",
         "esModuleInterop": true,
-        "strict": true
+        "strict": true,
+        "types": [
+            "node"
+        ]
     },
     "include": [
         "src"

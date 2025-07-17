@@ -19,14 +19,19 @@ export class EventCounterPlugin extends BasePlugin<
 
   constructor(options: EventCounterPluginOptions = {}) {
     super();
-    console.log("[EventCounterPlugin] Constructor called");
     this.options = {
-      enableConsoleLogging: true,
+      enableConsoleLogging: false, // Default to false to reduce noise
       statsApiBaseUrl: "http://localhost:41321",
       ...options,
     };
+
+    if (this.options.enableConsoleLogging) {
+      console.log("[EventCounterPlugin] Constructor called");
+    }
+
     this.context = {};
-    this.publishers = [new EventCounterPublisher(this.options.statsApiBaseUrl)];
+    this.publishers = [new EventCounterPublisher(this.options.statsApiBaseUrl, this.options.enableConsoleLogging)];
+
     // Persist the catalog if provided, only on the server
     if (this.options.catalog && typeof window === "undefined") {
       try {
@@ -42,19 +47,29 @@ export class EventCounterPlugin extends BasePlugin<
           JSON.stringify(this.options.catalog, null, 2),
           "utf-8",
         );
-        console.log(`[EventCounterPlugin] Catalog written to ${catalogPath}`);
+
+        if (this.options.enableConsoleLogging) {
+          console.log(`[EventCounterPlugin] Catalog written to ${catalogPath}`);
+        }
       } catch (e) {
-        console.warn("[EventCounterPlugin] Failed to write catalog:", e);
+        if (this.options.enableConsoleLogging) {
+          console.warn("[EventCounterPlugin] Failed to write catalog:", e);
+        }
       }
     }
-    console.log("[EventCounterPlugin] Constructor completed");
+
+    if (this.options.enableConsoleLogging) {
+      console.log("[EventCounterPlugin] Constructor completed");
+    }
   }
 
   onRegister(): void {
-    console.log("[EventCounterPlugin] onRegister called");
-    console.log(
-      "EventCounterPlugin registered. Tracking all events with counts.",
-    );
+    if (this.options.enableConsoleLogging) {
+      console.log("[EventCounterPlugin] onRegister called");
+      console.log(
+        "EventCounterPlugin registered. Tracking all events with counts.",
+      );
+    }
   }
 
   // Get access to the publisher for external use
@@ -67,7 +82,9 @@ export class EventCounterPlugin extends BasePlugin<
  * Factory for EventCounterPlugin. Pass your event catalog as { catalog: EventCatalog } to make it available to the dashboard.
  */
 export function EventCounterPluginFactory(options?: EventCounterPluginOptions) {
-  console.log("[EventCounterPluginFactory] Creating new EventCounterPlugin");
+  if (options?.enableConsoleLogging) {
+    console.log("[EventCounterPluginFactory] Creating new EventCounterPlugin");
+  }
 
   return new EventCounterPlugin(options);
 }

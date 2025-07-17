@@ -18,13 +18,31 @@ import { EventCounterPluginFactory } from "@rachelallyson/stratum-event-counter-
 
 const stratumService = new StratumService({
   catalog: { items: EventCatalog },
-  plugins: [EventCounterPluginFactory()],
+  plugins: [EventCounterPluginFactory({
+    enableConsoleLogging: false // Set to true to enable detailed console logs
+  })],
   productName: "your-product",
   productVersion: "1.0.0",
 });
 ```
 
-### 2. Start the event counter server
+### 2. Configuration Options
+
+The plugin accepts the following options:
+
+- `enableConsoleLogging` (boolean): Enable detailed console logging. Default: `false`
+- `statsApiBaseUrl` (string): Base URL for the stats API server. Default: `"http://localhost:41321"`
+- `catalog` (object): Pass your event catalog to make it available to the dashboard
+
+```ts
+EventCounterPluginFactory({
+  enableConsoleLogging: true, // Enable verbose logging for debugging
+  statsApiBaseUrl: "http://localhost:3000", // Custom API server URL
+  catalog: EventCatalog // Your event catalog
+})
+```
+
+### 3. Start the event counter server
 
 ```sh
 npx stratum-event-counter-plugin serve
@@ -33,13 +51,13 @@ npx stratum-event-counter-plugin serve
 - The dashboard will be available at [http://localhost:41321](http://localhost:41321) by default.
 - Use `--port <port>` to change the port.
 
-### 3. API Endpoints
+### 4. API Endpoints
 
 - `GET /api/events-stats?statsId=run-<id>`: Get event stats for a run.
 - `POST /api/events-stats?statsId=run-<id>`: Update event stats.
 - `PUT /api/events-stats?statsId=run-<id>`: Reset event stats.
 
-### 4. Cypress/Automated Testing
+### 5. Cypress/Automated Testing
 
 - Set `window.__eventStatsId = "run-<id>"` before publishing events to group stats by test run.
 - After tests, check the generated `event-stats-run-<id>.json` files for event counts.

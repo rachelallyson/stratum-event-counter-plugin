@@ -16,16 +16,21 @@ export class EventCounterPublisher extends BasePublisher {
   name = "eventCounter";
   private state: EventCounterState;
   private statsApiBaseUrl: string;
+  private enableConsoleLogging: boolean;
 
-  constructor(statsApiBaseUrl?: string) {
+  constructor(statsApiBaseUrl?: string, enableConsoleLogging = false) {
     super();
     this.statsApiBaseUrl = statsApiBaseUrl || "";
+    this.enableConsoleLogging = enableConsoleLogging;
     this.state = {
       events: {},
       startTime: new Date().toISOString(),
       totalEvents: 0,
     };
-    console.log("[EventCounterPublisher] Constructor called");
+
+    if (this.enableConsoleLogging) {
+      console.log("[EventCounterPublisher] Constructor called");
+    }
   }
 
   shouldPublishEvent(): boolean {
@@ -37,24 +42,32 @@ export class EventCounterPublisher extends BasePublisher {
   }
 
   onInitialize(injector: any): void {
-    console.log(
-      "[EventCounterPublisher] onInitialize called with injector:",
-      injector,
-    );
+    if (this.enableConsoleLogging) {
+      console.log(
+        "[EventCounterPublisher] onInitialize called with injector:",
+        injector,
+      );
+    }
 
     // Initialize events from the catalog
     if (injector?.registeredEventIds) {
-      console.log(
-        "[EventCounterPublisher] Initializing events from catalog, count:",
-        Object.keys(injector.registeredEventIds).length,
-      );
+      if (this.enableConsoleLogging) {
+        console.log(
+          "[EventCounterPublisher] Initializing events from catalog, count:",
+          Object.keys(injector.registeredEventIds).length,
+        );
+      }
+
       Object.keys(injector.registeredEventIds).forEach((key) => {
         this.state.events[key] = { count: 0 };
       });
-      console.log(
-        "[EventCounterPublisher] Initialized events:",
-        Object.keys(this.state.events),
-      );
+
+      if (this.enableConsoleLogging) {
+        console.log(
+          "[EventCounterPublisher] Initialized events:",
+          Object.keys(this.state.events),
+        );
+      }
     }
   }
 
@@ -66,21 +79,24 @@ export class EventCounterPublisher extends BasePublisher {
     const eventKey = content.event?.key || content.snapshot?.event?.key;
 
     if (!eventKey) {
-      console.warn(
-        "[EventCounterPublisher] No event key found in content:",
-        content,
-      );
-
+      if (this.enableConsoleLogging) {
+        console.warn(
+          "[EventCounterPublisher] No event key found in content:",
+          content,
+        );
+      }
       return;
     }
 
-    console.log(
-      `[EventCounterPublisher] onPublish called for event: ${eventKey}`,
-    );
-    console.log(
-      "[EventCounterPublisher] Full content:",
-      JSON.stringify(content, null, 2),
-    );
+    if (this.enableConsoleLogging) {
+      console.log(
+        `[EventCounterPublisher] onPublish called for event: ${eventKey}`,
+      );
+      console.log(
+        "[EventCounterPublisher] Full content:",
+        JSON.stringify(content, null, 2),
+      );
+    }
 
     // Increment in-memory counts
     this.state.totalEvents++;
@@ -95,9 +111,11 @@ export class EventCounterPublisher extends BasePublisher {
     eventCount.firstUsed ??= now;
     eventCount.lastUsed = now;
 
-    console.log(
-      `[EventCounterPublisher] Event Counter: ${eventKey} (count: ${eventCount.count})`,
-    );
+    if (this.enableConsoleLogging) {
+      console.log(
+        `[EventCounterPublisher] Event Counter: ${eventKey} (count: ${eventCount.count})`,
+      );
+    }
 
     // Send event update to API for persistent storage
     try {
@@ -113,11 +131,13 @@ export class EventCounterPublisher extends BasePublisher {
         apiUrl = `${this.statsApiBaseUrl.replace(/\/$/, "")}/api/events-stats?statsId=${encodeURIComponent(statsId)}`;
       }
 
-      console.log("[EventCounterPublisher] Sending event to API:", {
-        apiUrl,
-        eventKey,
-        timestamp: now,
-      });
+      if (this.enableConsoleLogging) {
+        console.log("[EventCounterPublisher] Sending event to API:", {
+          apiUrl,
+          eventKey,
+          timestamp: now,
+        });
+      }
 
       const response = await fetch(apiUrl, {
         body: JSON.stringify({
@@ -130,28 +150,35 @@ export class EventCounterPublisher extends BasePublisher {
         method: "POST",
       });
 
-      console.log(
-        "[EventCounterPublisher] API response status:",
-        response.status,
-      );
+      if (this.enableConsoleLogging) {
+        console.log(
+          "[EventCounterPublisher] API response status:",
+          response.status,
+        );
+      }
 
       if (!response.ok) {
-        console.error(
-          `[EventCounterPublisher] API error: ${response.status} ${response.statusText}`,
-        );
-
+        if (this.enableConsoleLogging) {
+          console.error(
+            `[EventCounterPublisher] API error: ${response.status} ${response.statusText}`,
+          );
+        }
         return;
       }
 
       const result = await response.json();
 
-      console.log("[EventCounterPublisher] API response:", result);
+      if (this.enableConsoleLogging) {
+        console.log("[EventCounterPublisher] API response:", result);
+      }
     } catch (error) {
-      // Silently fail if API is not available
-      console.warn(
-        "[EventCounterPublisher] Failed to persist event to API:",
-        error,
-      );
+      // Silently fail if API is not available, but warn if logging is enabled
+      if (this.enableConsoleLogging) {
+        console.warn(
+          "[EventCounterPublisher] Failed to persist event to API:",
+          error,
+        );
+      }
     }
   }
 
