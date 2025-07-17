@@ -1,0 +1,21 @@
+import { AdminEventCatalog, AdminEventKeys } from "./admin";
+import { AuthEventCatalog, AuthEventKeys } from "./auth";
+import { OrgEventCatalog, OrgEventKeys } from "./org";
+import { PublicEventCatalog, PublicEventKeys } from "./public";
+import { VolunteerEventCatalog, VolunteerEventKeys } from "./volunteer";
+
+export const EventKeys = {
+  ...AdminEventKeys,
+  ...AuthEventKeys,
+  ...PublicEventKeys,
+  ...OrgEventKeys,
+  ...VolunteerEventKeys,
+};
+
+export const EventCatalog = {
+  ...AdminEventCatalog,
+  ...AuthEventCatalog,
+  ...PublicEventCatalog,
+  ...OrgEventCatalog,
+  ...VolunteerEventCatalog,
+};

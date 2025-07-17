@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Event Counter Plugin Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 2em;
+            background: #f8fafc;
+        }
+
+        h1 {
+            margin-bottom: 0.5em;
+        }
+
+        .controls {
+            margin-bottom: 1em;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            background: #fff;
+            box-shadow: 0 2px 8px #0001;
+        }
+
+        th,
+        td {
+            padding: 0.5em 1em;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        th {
+            background: #f1f5f9;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .unused {
+            color: #888;
+            background: #f9fafb;
+        }
+
+        .search {
+            padding: 0.5em;
+            width: 250px;
+            margin-right: 1em;
+        }
+
+        button {
+            padding: 0.5em 1em;
+            margin-right: 0.5em;
+            border: none;
+            background: #2563eb;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        .run-select {
+            margin-right: 1em;
+            padding: 0.5em;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Event Counter Plugin Dashboard</h1>
+    <div class="controls">
+        <select id="runSelect" class="run-select"></select>
+        <input id="search" class="search" type="text" placeholder="Search events..." />
+        <button onclick="fetchStats()">Refresh</button>
+        <button onclick="resetStats()">Reset Stats</button>
+        <button onclick="downloadCSV()">Download CSV</button>
+        <button onclick="downloadJSON()">Download JSON</button>
+    </div>
+    <div id="summary"></div>
+    <table id="eventsTable">
+        <thead>
+            <tr>
+                <th>Event Key</th>
+                <th>Description</th>
+                <th>Count</th>
+                <th>First Used</th>
+                <th>Last Used</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <script>
+        let catalog = {};
+        let stats = {};
+        let allRuns = [];
+        let currentRun = '';
+
+        async function fetchCatalog() {
+            try {
+                const res = await fetch('/api/catalog');
+                if (!res.ok) throw new Error('No catalog.json found');
+                catalog = await res.json();
+            } catch (e) {
+                catalog = {};
+            }
+        }
+
+        async function fetchRunFiles() {
+            try {
+                const res = await fetch('/api/runs');
+                if (res.ok) {
+                    const runs = await res.json();
+                    allRuns = runs;
+
+                    // Update the run selector
+                    const runSelect = document.getElementById('runSelect');
+                    runSelect.innerHTML = runs.map(run =>
+                        `<option value="${run.id}">${run.name}</option>`
+                    ).join('');
+
+                    // Select the most recent run by default (first in list after sorting)
+                    if (runs.length > 0) {
+                        runSelect.value = runs[0].id;
+                    }
+                } else {
+                    // Fallback to default if API fails
+                    allRuns = [{ id: 'default', name: 'Default Run' }];
+                    document.getElementById('runSelect').innerHTML = '<option value="default">Default Run</option>';
+                }
+            } catch (error) {
+                console.error('Failed to fetch runs:', error);
+                allRuns = [{ id: 'default', name: 'Default Run' }];
+                document.getElementById('runSelect').innerHTML = '<option value="default">Default Run</option>';
+            }
+        }
+
+        async function fetchStats(runId) {
+            runId = runId || document.getElementById('runSelect').value || 'default';
+            currentRun = runId;
+            const statsRes = await fetch(`/api/events-stats?statsId=${encodeURIComponent(runId)}`);
+            stats = await statsRes.json();
+            render();
+        }
+
+        function render() {
+            // Merge catalog and stats
+            const events = { ...catalog, ...stats.events };
+            const rows = [];
+            let used = 0;
+            let unused = 0;
+            let total = 0;
+            for (const key of Object.keys(catalog).sort()) {
+                const stat = stats.events && stats.events[key] ? stats.events[key] : { count: 0 };
+                const desc = catalog[key]?.description || '';
+                const trClass = stat.count === 0 ? 'unused' : '';
+                if (stat.count > 0) used++; else unused++;
+                total += stat.count;
+                rows.push(`<tr class="${trClass}"><td>${key}</td><td>${desc}</td><td>${stat.count}</td><td>${stat.firstUsed || ''}</td><td>${stat.lastUsed || ''}</td></tr>`);
+            }
+            document.querySelector('#eventsTable tbody').innerHTML = rows.join('');
+            document.getElementById('summary').innerHTML = `
+                <b>Total Events Published:</b> ${total} &nbsp; | &nbsp;
+                <b>Unique Events Used:</b> ${used}/${Object.keys(catalog).length} &nbsp; | &nbsp;
+                <b>Unused Events:</b> ${unused}
+            `;
+        }
+
+        document.getElementById('search').addEventListener('input', function (e) {
+            const val = e.target.value.toLowerCase();
+            for (const row of document.querySelectorAll('#eventsTable tbody tr')) {
+                row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+            }
+        });
+
+        async function resetStats() {
+            if (!confirm('Are you sure you want to reset stats for this run?')) return;
+            await fetch(`/api/events-stats?statsId=${encodeURIComponent(currentRun)}`, { method: 'PUT' });
+            fetchStats(currentRun);
+        }
+
+        function downloadCSV() {
+            let csv = 'Event Key,Description,Count,First Used,Last Used\n';
+            for (const key of Object.keys(catalog).sort()) {
+                const stat = stats.events && stats.events[key] ? stats.events[key] : { count: 0 };
+                const desc = catalog[key]?.description || '';
+                csv += `"${key}","${desc}",${stat.count},"${stat.firstUsed || ''}","${stat.lastUsed || ''}"\n`;
+            }
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `event-stats-${currentRun}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadJSON() {
+            const blob = new Blob([JSON.stringify(stats, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `event-stats-${currentRun}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function init() {
+            await fetchCatalog();
+            await fetchRunFiles();
+
+            // Add event listener for run selection changes
+            const runSelect = document.getElementById('runSelect');
+            runSelect.addEventListener('change', () => fetchStats(runSelect.value));
+
+            // Load the first available run (most recent)
+            if (allRuns.length > 0) {
+                await fetchStats(allRuns[0].id);
+            } else {
+                await fetchStats('default');
+            }
+        }
+        init();
+    </script>
+</body>
+
+</html>

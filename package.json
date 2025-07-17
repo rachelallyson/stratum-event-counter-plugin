@@ -1,0 +1,31 @@
+{
+    "name": "@rachelallyson/stratum-event-counter-plugin",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "description": "A Stratum plugin for event counting and file logging.",
+    "author": "Rachel Allyson",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/rachelallyson/stratum-event-counter-plugin.git"
+    },
+    "peerDependencies": {
+        "@capitalone/stratum-observability": "^1.2.1"
+    },
+    "dependencies": {
+        "express": "^4.19.2"
+    },
+    "scripts": {
+        "build": "tsc",
+        "postbuild": "cp src/dashboard.html dist/dashboard.html",
+        "serve": "node dist/server.js"
+    },
+    "bin": {
+        "stratum-event-counter-plugin": "dist/server.js"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.3"
+    }
+}
