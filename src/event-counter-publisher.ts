@@ -38,11 +38,17 @@ export class EventCounterPublisher extends BasePublisher {
     EventCounterPublisher.enableLogging = enabled;
   }
 
-  shouldPublishEvent(): boolean {
+  shouldPublishEvent(event: any): boolean {
+    if (EventCounterPublisher.enableLogging) {
+      console.log("[EventCounterPublisher] shouldPublishEvent called with:", event);
+    }
     return true; // Handle all events
   }
 
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(event: any, snapshot: any): Promise<boolean> {
+    if (EventCounterPublisher.enableLogging) {
+      console.log("[EventCounterPublisher] isAvailable called with:", { event, snapshot });
+    }
     return true; // Always available
   }
 
