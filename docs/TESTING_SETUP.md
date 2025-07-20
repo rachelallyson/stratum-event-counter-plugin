@@ -66,16 +66,68 @@ afterEach(async () => {
 
 ### **Cypress**
 
+**Option 1: Global Run ID (all tests in `cypress run` share same ID):**
+
 ```javascript
-// cypress/support/e2e.js
+// cypress.config.ts - Set run ID once for entire test run
+import { defineConfig } from 'cypress';
+const { startTestRun, endTestRun } = require('@rachelallyson/stratum-event-counter-plugin/test-utils');
+
+export default defineConfig({
+  e2e: {
+    setupNodeEvents(on, config) {
+      let currentRunId: string | null = null;
+
+      on('before:run', async () => {
+        currentRunId = await startTestRun({ prefix: 'cypress' });
+      });
+
+      on('after:run', async () => {
+        if (currentRunId) {
+          await endTestRun();
+        }
+      });
+
+      return config;
+    }
+  }
+});
+```
+
+```javascript
+// cypress/e2e/your-tests.cy.ts - Use the global run ID
+import { getActiveRunId, resetRunStats } from '@rachelallyson/stratum-event-counter-plugin/test-utils-browser';
+
+describe('My Tests', () => {
+  beforeEach(async () => {
+    // Optional: Reset stats but keep same run ID
+    const runId = await getActiveRunId();
+    if (runId) {
+      await resetRunStats(runId);
+    }
+  });
+
+  it('should use global run ID', async () => {
+    const runId = await getActiveRunId();
+    // All tests use the same run ID
+  });
+});
+```
+
+**Option 2: Individual Run IDs (each test gets its own ID):**
+
+```javascript
+// cypress/e2e/your-tests.cy.ts - Each test gets its own run ID
 import { startTestRun, endTestRun } from '@rachelallyson/stratum-event-counter-plugin/test-utils-browser';
 
-beforeEach(() => {
-  cy.wrap(startTestRun({ prefix: 'cypress' })).as('runId');
-});
+describe('My Tests', () => {
+  beforeEach(() => {
+    cy.wrap(startTestRun({ prefix: 'cypress' })).as('runId');
+  });
 
-afterEach(() => {
-  cy.wrap(endTestRun());
+  afterEach(() => {
+    cy.wrap(endTestRun());
+  });
 });
 ```
 
