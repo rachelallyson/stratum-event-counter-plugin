@@ -139,3 +139,5 @@ dist/data/
 cypress/screenshots/
 cypress/videos/
 cypress/downloads/
+
+.npmrc
