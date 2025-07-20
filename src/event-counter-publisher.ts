@@ -15,22 +15,27 @@ export interface EventCounterState {
 export class EventCounterPublisher extends BasePublisher {
   name = "eventCounter";
   private state: EventCounterState;
-  private statsApiBaseUrl: string;
-  private enableConsoleLogging: boolean;
+  private dashboardUrl: string;
+  private catalog: Record<string, any>;
+  private static enableLogging = false;
 
-  constructor(statsApiBaseUrl?: string, enableConsoleLogging = false) {
+  constructor(dashboardUrl = 'http://localhost:41321', catalog: Record<string, any> = {}) {
     super();
-    this.statsApiBaseUrl = statsApiBaseUrl || "";
-    this.enableConsoleLogging = enableConsoleLogging;
+    this.dashboardUrl = dashboardUrl;
+    this.catalog = catalog;
     this.state = {
       events: {},
       startTime: new Date().toISOString(),
       totalEvents: 0,
     };
 
-    if (this.enableConsoleLogging) {
+    if (EventCounterPublisher.enableLogging) {
       console.log("[EventCounterPublisher] Constructor called");
     }
+  }
+
+  static setLogging(enabled: boolean) {
+    EventCounterPublisher.enableLogging = enabled;
   }
 
   shouldPublishEvent(): boolean {
@@ -42,7 +47,7 @@ export class EventCounterPublisher extends BasePublisher {
   }
 
   onInitialize(injector: any): void {
-    if (this.enableConsoleLogging) {
+    if (EventCounterPublisher.enableLogging) {
       console.log(
         "[EventCounterPublisher] onInitialize called with injector:",
         injector,
@@ -51,7 +56,7 @@ export class EventCounterPublisher extends BasePublisher {
 
     // Initialize events from the catalog
     if (injector?.registeredEventIds) {
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.log(
           "[EventCounterPublisher] Initializing events from catalog, count:",
           Object.keys(injector.registeredEventIds).length,
@@ -62,10 +67,72 @@ export class EventCounterPublisher extends BasePublisher {
         this.state.events[key] = { count: 0 };
       });
 
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.log(
           "[EventCounterPublisher] Initialized events:",
           Object.keys(this.state.events),
+        );
+      }
+    }
+
+    // Send catalog to server for this run
+    this.sendCatalogToServer();
+  }
+
+  private async sendCatalogToServer(): Promise<void> {
+    try {
+      // Get the test name from the window (if running in browser)
+      let statsId = "default";
+
+      if (typeof window !== "undefined" && (window as any).__eventStatsId) {
+        statsId = (window as any).__eventStatsId;
+      }
+
+      // Use configured dashboard URL
+      const apiUrl = `${this.dashboardUrl}/api/catalog?statsId=${encodeURIComponent(statsId)}`;
+
+      if (EventCounterPublisher.enableLogging) {
+        console.log("[EventCounterPublisher] Sending catalog to API:", {
+          apiUrl,
+          catalog: this.catalog,
+        });
+      }
+
+      const response = await fetch(apiUrl, {
+        body: JSON.stringify(this.catalog),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (EventCounterPublisher.enableLogging) {
+        console.log(
+          "[EventCounterPublisher] Catalog API response status:",
+          response.status,
+        );
+      }
+
+      if (!response.ok) {
+        if (EventCounterPublisher.enableLogging) {
+          console.error(
+            `[EventCounterPublisher] Catalog API error: ${response.status} ${response.statusText}`,
+          );
+        }
+        return;
+      }
+
+      const result = await response.json();
+
+      if (EventCounterPublisher.enableLogging) {
+        console.log("[EventCounterPublisher] Catalog API response:", result);
+      }
+    } catch (error) {
+      // Silently fail if API is not available, but warn if logging is enabled
+      if (EventCounterPublisher.enableLogging) {
+        console.warn(
+          "[EventCounterPublisher] Failed to send catalog to API:",
+          error,
         );
       }
     }
@@ -79,7 +146,7 @@ export class EventCounterPublisher extends BasePublisher {
     const eventKey = content.event?.key || content.snapshot?.event?.key;
 
     if (!eventKey) {
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.warn(
           "[EventCounterPublisher] No event key found in content:",
           content,
@@ -88,7 +155,7 @@ export class EventCounterPublisher extends BasePublisher {
       return;
     }
 
-    if (this.enableConsoleLogging) {
+    if (EventCounterPublisher.enableLogging) {
       console.log(
         `[EventCounterPublisher] onPublish called for event: ${eventKey}`,
       );
@@ -111,7 +178,7 @@ export class EventCounterPublisher extends BasePublisher {
     eventCount.firstUsed ??= now;
     eventCount.lastUsed = now;
 
-    if (this.enableConsoleLogging) {
+    if (EventCounterPublisher.enableLogging) {
       console.log(
         `[EventCounterPublisher] Event Counter: ${eventKey} (count: ${eventCount.count})`,
       );
@@ -125,13 +192,11 @@ export class EventCounterPublisher extends BasePublisher {
       if (typeof window !== "undefined" && (window as any).__eventStatsId) {
         statsId = (window as any).__eventStatsId;
       }
-      let apiUrl = `/api/events-stats?statsId=${encodeURIComponent(statsId)}`;
 
-      if (this.statsApiBaseUrl) {
-        apiUrl = `${this.statsApiBaseUrl.replace(/\/$/, "")}/api/events-stats?statsId=${encodeURIComponent(statsId)}`;
-      }
+      // Use configured dashboard URL
+      const apiUrl = `${this.dashboardUrl}/api/events-stats?statsId=${encodeURIComponent(statsId)}`;
 
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.log("[EventCounterPublisher] Sending event to API:", {
           apiUrl,
           eventKey,
@@ -150,7 +215,7 @@ export class EventCounterPublisher extends BasePublisher {
         method: "POST",
       });
 
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.log(
           "[EventCounterPublisher] API response status:",
           response.status,
@@ -158,7 +223,7 @@ export class EventCounterPublisher extends BasePublisher {
       }
 
       if (!response.ok) {
-        if (this.enableConsoleLogging) {
+        if (EventCounterPublisher.enableLogging) {
           console.error(
             `[EventCounterPublisher] API error: ${response.status} ${response.statusText}`,
           );
@@ -168,12 +233,12 @@ export class EventCounterPublisher extends BasePublisher {
 
       const result = await response.json();
 
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.log("[EventCounterPublisher] API response:", result);
       }
     } catch (error) {
       // Silently fail if API is not available, but warn if logging is enabled
-      if (this.enableConsoleLogging) {
+      if (EventCounterPublisher.enableLogging) {
         console.warn(
           "[EventCounterPublisher] Failed to persist event to API:",
           error,
@@ -213,33 +278,12 @@ export class EventCounterPublisher extends BasePublisher {
   }
 
   getSummary(): string {
+    const totalEvents = this.state.totalEvents;
+    const eventCount = Object.keys(this.state.events).length;
     const usedEvents = Object.values(this.state.events).filter(
-      (e) => e.count > 0,
+      (count) => count.count > 0,
     ).length;
-    const totalCatalogEvents = Object.keys(this.state.events).length;
-    const unusedEvents = totalCatalogEvents - usedEvents;
-    const mostUsed = this.getMostUsedEvents(5);
-    const unused = this.getUnusedEvents().slice(0, 5);
-    let summary = "Event Counter Summary\n";
 
-    summary += `Total Events Published: ${this.state.totalEvents}\n`;
-    summary += `Unique Events Used: ${usedEvents}/${totalCatalogEvents}\n`;
-    summary += `Unused Events: ${unusedEvents}\n`;
-    summary += `Tracking Since: ${this.state.startTime}\n\n`;
-    if (mostUsed.length > 0) {
-      summary += "Most Used Events:\n";
-      mostUsed.forEach(({ count, key }) => {
-        summary += `  ${key}: ${count} times\n`;
-      });
-      summary += "\n";
-    }
-    if (unused.length > 0) {
-      summary += "Sample Unused Events:\n";
-      unused.forEach((key) => {
-        summary += `  ${key}\n`;
-      });
-    }
-
-    return summary;
+    return `Event Counter: ${totalEvents} total events, ${usedEvents}/${eventCount} events used`;
   }
 }

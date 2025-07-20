@@ -79,12 +79,14 @@
     <div class="controls">
         <select id="runSelect" class="run-select"></select>
         <input id="search" class="search" type="text" placeholder="Search events..." />
-        <button onclick="fetchStats()">Refresh</button>
+        <button onclick="refreshDashboard()">Refresh</button>
         <button onclick="resetStats()">Reset Stats</button>
+        <button onclick="cleanupOldRuns()">Cleanup Old Runs</button>
         <button onclick="downloadCSV()">Download CSV</button>
         <button onclick="downloadJSON()">Download JSON</button>
     </div>
     <div id="summary"></div>
+    <div id="cleanupStatus" style="margin: 1em 0; padding: 0.5em; border-radius: 4px; display: none;"></div>
     <table id="eventsTable">
         <thead>
             <tr>
@@ -103,10 +105,11 @@
         let allRuns = [];
         let currentRun = '';
 
-        async function fetchCatalog() {
+        async function fetchCatalog(runId) {
+            runId = runId || document.getElementById('runSelect').value || 'default';
             try {
-                const res = await fetch('/api/catalog');
-                if (!res.ok) throw new Error('No catalog.json found');
+                const res = await fetch(`/api/catalog?statsId=${encodeURIComponent(runId)}`);
+                if (!res.ok) throw new Error('No catalog found for this run');
                 catalog = await res.json();
             } catch (e) {
                 catalog = {};
@@ -126,9 +129,14 @@
                         `<option value="${run.id}">${run.name}</option>`
                     ).join('');
 
-                    // Select the most recent run by default (first in list after sorting)
+                    // Always start with default run for consistency
                     if (runs.length > 0) {
-                        runSelect.value = runs[0].id;
+                        const defaultRun = runs.find(run => run.id === 'default');
+                        if (defaultRun) {
+                            runSelect.value = 'default';
+                        } else {
+                            runSelect.value = runs[0].id;
+                        }
                     }
                 } else {
                     // Fallback to default if API fails
@@ -145,30 +153,54 @@
         async function fetchStats(runId) {
             runId = runId || document.getElementById('runSelect').value || 'default';
             currentRun = runId;
-            const statsRes = await fetch(`/api/events-stats?statsId=${encodeURIComponent(runId)}`);
+
+            // Fetch both stats and catalog for this run
+            const [statsRes, catalogRes] = await Promise.all([
+                fetch(`/api/events-stats?statsId=${encodeURIComponent(runId)}`),
+                fetch(`/api/catalog?statsId=${encodeURIComponent(runId)}`)
+            ]);
+
             stats = await statsRes.json();
+
+            // Update catalog for this run
+            if (catalogRes.ok) {
+                catalog = await catalogRes.json();
+            } else {
+                catalog = {};
+            }
+
             render();
         }
 
+        // Global refresh function that updates both runs and stats
+        async function refreshDashboard() {
+            await fetchRunFiles();
+            await fetchStats();
+            await checkCleanupStatus();
+        }
+
         function render() {
-            // Merge catalog and stats
-            const events = { ...catalog, ...stats.events };
             const rows = [];
             let used = 0;
             let unused = 0;
             let total = 0;
-            for (const key of Object.keys(catalog).sort()) {
+
+            // Get all unique event keys from both catalog and stats
+            const allKeys = new Set([...Object.keys(catalog), ...Object.keys(stats.events || {})]);
+
+            for (const key of Array.from(allKeys).sort()) {
                 const stat = stats.events && stats.events[key] ? stats.events[key] : { count: 0 };
-                const desc = catalog[key]?.description || '';
+                const desc = catalog[key]?.description || (stat.count > 0 ? '<em>Not in catalog</em>' : '');
                 const trClass = stat.count === 0 ? 'unused' : '';
                 if (stat.count > 0) used++; else unused++;
                 total += stat.count;
                 rows.push(`<tr class="${trClass}"><td>${key}</td><td>${desc}</td><td>${stat.count}</td><td>${stat.firstUsed || ''}</td><td>${stat.lastUsed || ''}</td></tr>`);
             }
+
             document.querySelector('#eventsTable tbody').innerHTML = rows.join('');
             document.getElementById('summary').innerHTML = `
-                <b>Total Events Published:</b> ${total} &nbsp; | &nbsp;
-                <b>Unique Events Used:</b> ${used}/${Object.keys(catalog).length} &nbsp; | &nbsp;
+                <b>Total Events Published:</b> <span data-testid="total-events">${total}</span> &nbsp; | &nbsp;
+                <b>Unique Events Used:</b> ${used}/${allKeys.size} &nbsp; | &nbsp;
                 <b>Unused Events:</b> ${unused}
             `;
         }
@@ -188,7 +220,10 @@
 
         function downloadCSV() {
             let csv = 'Event Key,Description,Count,First Used,Last Used\n';
-            for (const key of Object.keys(catalog).sort()) {
+            // Get all unique event keys from both catalog and stats
+            const allKeys = new Set([...Object.keys(catalog), ...Object.keys(stats.events || {})]);
+
+            for (const key of Array.from(allKeys).sort()) {
                 const stat = stats.events && stats.events[key] ? stats.events[key] : { count: 0 };
                 const desc = catalog[key]?.description || '';
                 csv += `"${key}","${desc}",${stat.count},"${stat.firstUsed || ''}","${stat.lastUsed || ''}"\n`;
@@ -212,22 +247,90 @@
             URL.revokeObjectURL(url);
         }
 
+        async function cleanupOldRuns() {
+            if (!confirm('Are you sure you want to cleanup old run files? This will remove the oldest run files beyond the max runs limit.')) return;
+
+            try {
+                const response = await fetch('/api/cleanup', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`Cleanup completed!\n\nRemoved: ${result.removed} files\nKept: ${result.total - result.removed} runs\nMax runs: ${result.maxRuns}`);
+                    // Refresh the dashboard to show updated run list
+                    await refreshDashboard();
+                } else {
+                    alert('Cleanup failed: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Cleanup failed:', error);
+                alert('Cleanup failed: ' + error.message);
+            }
+        }
+
+        async function checkCleanupStatus() {
+            try {
+                const response = await fetch('/api/cleanup');
+                const status = await response.json();
+
+                const statusDiv = document.getElementById('cleanupStatus');
+                if (status.needsCleanup) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#fef3c7';
+                    statusDiv.style.border = '1px solid #f59e0b';
+                    statusDiv.style.color = '#92400e';
+                    statusDiv.innerHTML = `
+                        <strong>⚠️ Cleanup Recommended:</strong> You have ${status.currentRuns} run files (max: ${status.maxRuns}). 
+                        <button onclick="cleanupOldRuns()" style="margin-left: 1em; background: #dc2626; color: white; border: none; padding: 0.25em 0.5em; border-radius: 3px; cursor: pointer;">Cleanup Now</button>
+                    `;
+                } else {
+                    statusDiv.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to check cleanup status:', error);
+            }
+        }
+
         async function init() {
-            await fetchCatalog();
             await fetchRunFiles();
 
             // Add event listener for run selection changes
             const runSelect = document.getElementById('runSelect');
             runSelect.addEventListener('change', () => fetchStats(runSelect.value));
 
-            // Load the first available run (most recent)
-            if (allRuns.length > 0) {
+            // Always start with default run for consistency
+            const defaultRun = allRuns.find(run => run.id === 'default');
+            if (defaultRun) {
+                await fetchStats('default');
+            } else if (allRuns.length > 0) {
                 await fetchStats(allRuns[0].id);
             } else {
                 await fetchStats('default');
             }
+
+            // Check cleanup status
+            await checkCleanupStatus();
+
+            // Mark dashboard as ready after initialization
+            window.dashboardReady = true;
         }
-        init();
+
+        // Debug function for testing
+        window.dashboardReady = false;
+        window.debugDashboard = () => {
+            return {
+                catalog,
+                stats,
+                allRuns,
+                currentRun,
+                events: { ...catalog, ...stats.events }
+            };
+        };
+
+        // Initialize dashboard
+        init().catch(error => {
+            console.error('Dashboard initialization failed:', error);
+            window.dashboardReady = true; // Mark as ready even on error
+        });
     </script>
 </body>
 

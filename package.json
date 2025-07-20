@@ -20,16 +20,30 @@
     },
     "scripts": {
         "build": "tsc",
-        "postbuild": "cp src/dashboard.html dist/dashboard.html",
-        "serve": "node dist/server.js"
+        "postbuild": "cp src/dashboard.html dist/dashboard.html && chmod +x dist/server.js",
+        "postinstall": "chmod +x dist/server.js",
+        "serve": "node dist/server.js",
+        "server": "node dist/server.js",
+        "start": "node dist/server.js",
+        "test": "npm run test:unit && npm run test:e2e",
+        "test:unit": "vitest run",
+        "test:e2e": "NODE_ENV=test cypress run",
+        "test:e2e:open": "NODE_ENV=test cypress open",
+        "test:watch": "vitest",
+        "dev": "tsx watch src/server.ts"
     },
     "bin": {
-        "stratum-event-counter-plugin": "dist/server.js"
+        "stratum-event-counter": "dist/server.js"
     },
     "devDependencies": {
         "@types/cors": "^2.8.19",
         "@types/express": "^5.0.3",
         "@types/node": "^24.0.14",
-        "typescript": "^5.8.3"
+        "typescript": "^5.8.3",
+        "vitest": "^2.1.8",
+        "cypress": "^14.0.0",
+        "tsx": "^4.19.2",
+        "supertest": "^7.0.0",
+        "@types/supertest": "^6.0.2"
     }
 }

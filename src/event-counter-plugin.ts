@@ -1,90 +1,41 @@
 import { BasePlugin } from "@capitalone/stratum-observability";
-
 import { EventCounterPublisher } from "./event-counter-publisher";
 
 export interface EventCounterPluginOptions {
-  enableConsoleLogging?: boolean;
-  statsApiBaseUrl?: string;
-  catalog?: Record<string, any>; // Accept a catalog
+  catalog?: Record<string, any>;
+  dashboardUrl?: string;
+  enableLogging?: boolean;
 }
 
-export class EventCounterPlugin extends BasePlugin<
-  any,
-  EventCounterPluginOptions
-> {
-  name = "event-counter";
-  options: EventCounterPluginOptions;
-  context: any;
-  publishers: EventCounterPublisher[];
+export class EventCounterPlugin extends BasePlugin<any, EventCounterPluginOptions> {
+  public name = "event-counter";
+  public options: Required<EventCounterPluginOptions>;
+  private publisher: EventCounterPublisher;
 
   constructor(options: EventCounterPluginOptions = {}) {
     super();
     this.options = {
-      enableConsoleLogging: false, // Default to false to reduce noise
-      statsApiBaseUrl: "http://localhost:41321",
-      ...options,
+      catalog: {},
+      dashboardUrl: 'http://localhost:41321',
+      enableLogging: false,
+      ...options
     };
-
-    if (this.options.enableConsoleLogging) {
-      console.log("[EventCounterPlugin] Constructor called");
-    }
-
-    this.context = {};
-    this.publishers = [new EventCounterPublisher(this.options.statsApiBaseUrl, this.options.enableConsoleLogging)];
-
-    // Persist the catalog if provided, only on the server
-    if (this.options.catalog && typeof window === "undefined") {
-      try {
-        // Dynamically import fs and path only on the server
-        // @ts-ignore
-        const fs = require("fs");
-        // @ts-ignore
-        const path = require("path");
-        const catalogPath = path.join(process.cwd(), "event-catalog.json");
-
-        fs.writeFileSync(
-          catalogPath,
-          JSON.stringify(this.options.catalog, null, 2),
-          "utf-8",
-        );
-
-        if (this.options.enableConsoleLogging) {
-          console.log(`[EventCounterPlugin] Catalog written to ${catalogPath}`);
-        }
-      } catch (e) {
-        if (this.options.enableConsoleLogging) {
-          console.warn("[EventCounterPlugin] Failed to write catalog:", e);
-        }
-      }
-    }
-
-    if (this.options.enableConsoleLogging) {
-      console.log("[EventCounterPlugin] Constructor completed");
-    }
+    EventCounterPublisher.setLogging(this.options.enableLogging);
+    this.publisher = new EventCounterPublisher(this.options.dashboardUrl, this.options.catalog);
   }
 
-  onRegister(): void {
-    if (this.options.enableConsoleLogging) {
+  getPublishers() {
+    return [this.publisher];
+  }
+
+  onRegister() {
+    if (this.options.enableLogging) {
       console.log("[EventCounterPlugin] onRegister called");
-      console.log(
-        "EventCounterPlugin registered. Tracking all events with counts.",
-      );
+      console.log("EventCounterPlugin registered. Tracking all events with counts.");
     }
   }
-
-  // Get access to the publisher for external use
-  getPublisher(): EventCounterPublisher | undefined {
-    return this.publishers[0];
-  }
 }
 
-/**
- * Factory for EventCounterPlugin. Pass your event catalog as { catalog: EventCatalog } to make it available to the dashboard.
- */
-export function EventCounterPluginFactory(options?: EventCounterPluginOptions) {
-  if (options?.enableConsoleLogging) {
-    console.log("[EventCounterPluginFactory] Creating new EventCounterPlugin");
-  }
-
+export const EventCounterPluginFactory = (options: EventCounterPluginOptions = {}) => {
   return new EventCounterPlugin(options);
-}
+};

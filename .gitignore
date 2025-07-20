@@ -128,3 +128,14 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+
+# Event counter plugin data
+event-stats*.json
+event-catalog.json
+src/data/
+dist/data/
+
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
