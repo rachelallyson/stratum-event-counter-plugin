@@ -19,13 +19,22 @@ The plugin follows a strict separation between different responsibilities:
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Plugin        │    │  Dashboard       │    │  Dashboard      │
-│   (Event        │───▶│  Server          │───▶│  UI             │
-│   Counting)     │    │  (API + Files)   │    │  (Display)      │
+│   Stratum       │    │  Plugin          │    │  Dashboard      │
+│   Service       │───▶│  (Event          │───▶│  Server         │
+│   (Event        │    │  Counting)       │    │  (API + Files)  │
+│   Publishing)   │    │                  │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
+                              │
+                              ▼
+                       ┌─────────────────┐
+                       │  Dashboard      │
+                       │  UI             │
+                       │  (Display)      │
+                       └─────────────────┘
 ```
 
-- **Plugin**: Handles event counting and publishing
+- **Stratum Service**: Handles event publishing and plugin management
+- **Plugin**: Handles event counting and run isolation
 - **Dashboard Server**: Manages API endpoints and file storage
 - **Dashboard UI**: Provides visualization and interaction
 
@@ -65,7 +74,7 @@ This design:
 - **Supports different environments** - test servers, development servers, etc.
 - **Follows Unix philosophy** - single-purpose tools that do one thing well
 
-### **5. Publisher Self-Management**
+### **6. Publisher Self-Management**
 
 The publisher manages its own logging and state:
 
@@ -82,7 +91,7 @@ This approach:
 - **Simplifies testing** - can control logging state per test
 - **Follows single responsibility** - publisher handles publisher concerns
 
-### **6. Per-Run Data Isolation**
+### **7. Per-Run Data Isolation**
 
 Each run stores its own catalog and statistics, enabling proper comparison:
 
@@ -104,8 +113,38 @@ This design:
 - **Supports catalog evolution** - track how event definitions change over time
 - **Facilitates A/B testing** - compare different event schemas
 - **Improves debugging** - identify catalog mismatches
+- **Cross-environment consistency** - same run ID works in browser and server
 
 ## 🏗️ **Architectural Decisions**
+
+### **Why Stratum Integration?**
+
+The plugin integrates with Stratum observability because:
+
+1. **Framework Alignment**: Leverages established Stratum patterns and conventions
+2. **Event Flow**: Natural integration with Stratum's event publishing system
+3. **Plugin Architecture**: Follows Stratum's plugin-based extensibility model
+4. **Consistency**: Provides consistent API with other Stratum plugins
+
+### **Why Unified Run ID Approach?**
+
+The plugin uses a unified `runId` parameter because:
+
+1. **Cross-Environment**: Works in browser, server, and test environments
+2. **Explicit Configuration**: No reliance on global variables or implicit state
+3. **Stratum Compatibility**: Fits naturally with Stratum's configuration patterns
+4. **Testing Integration**: Easy to integrate with Cypress and other testing frameworks
+5. **Data Integrity**: Ensures consistent run identification across all environments
+
+### **Why No `window.__eventStatsId`?**
+
+The plugin intentionally avoids global window variables because:
+
+1. **Environment Limitations**: Window variables don't work in server environments
+2. **Implicit Behavior**: Global variables create "magic" that's hard to debug
+3. **Testing Complexity**: Global state makes testing more difficult
+4. **Stratum Philosophy**: Stratum prefers explicit configuration over implicit state
+5. **Cross-Environment**: Window variables limit cross-environment compatibility
 
 ### **Why No `startServer()` Method?**
 
@@ -155,6 +194,26 @@ Each run stores its own catalog because:
 
 ## 🎨 **Design Patterns**
 
+### **Stratum Plugin Pattern**
+
+The plugin follows Stratum's plugin architecture:
+
+```javascript
+// Extends BasePlugin and provides publishers
+export class EventCounterPlugin extends BasePlugin<any, EventCounterPluginOptions> {
+  getPublishers() {
+    return [this.publisher];
+  }
+}
+```
+
+Benefits:
+
+- **Framework Integration**: Natural fit with Stratum's architecture
+- **Consistent API**: Follows established Stratum patterns
+- **Extensibility**: Easy to extend and customize
+- **Event Flow**: Integrates seamlessly with Stratum's event system
+
 ### **Factory Pattern**
 
 The plugin uses a factory pattern for configuration:
@@ -199,7 +258,7 @@ The plugin communicates with the dashboard via HTTP API:
 
 ```javascript
 // Simple HTTP POST for event updates
-await fetch(`${dashboardUrl}/api/events-stats`, {
+await fetch(`${dashboardUrl}/api/events-stats?statsId=${runId}`, {
   method: 'POST',
   body: JSON.stringify({ eventKey, timestamp })
 });
@@ -230,6 +289,16 @@ Benefits:
 - **Cleanup**: Can remove entire runs including their catalogs
 
 ## 🚫 **What We Don't Do**
+
+### **No Global Window Variables**
+
+We don't use global window variables because:
+
+- **Environment Limitations**: Don't work in server environments
+- **Implicit Behavior**: Create "magic" that's hard to debug
+- **Testing Complexity**: Global state makes testing difficult
+- **Cross-Environment**: Limit compatibility across environments
+- **Stratum Philosophy**: Contradicts explicit configuration principles
 
 ### **No Automatic Server Management**
 
@@ -277,6 +346,8 @@ When making design decisions, we ask:
 4. **Is this appropriate for development/testing?** - Scope limitation
 5. **Does this follow established patterns?** - Consistency principle
 6. **Does this enable accurate comparisons?** - Data integrity principle
+7. **Does this work across environments?** - Cross-environment compatibility
+8. **Does this align with Stratum patterns?** - Framework integration
 
 ## 🔮 **Future Considerations**
 
@@ -287,5 +358,7 @@ The plugin is designed to evolve while maintaining these principles:
 - **Simplicity**: New features should not add unnecessary complexity
 - **Focus**: New features should support development/testing workflows
 - **Data Integrity**: New features should maintain per-run data isolation
+- **Cross-Environment**: New features should work in browser and server environments
+- **Stratum Alignment**: New features should align with Stratum's architecture
 
-This philosophy ensures the plugin remains focused, predictable, and valuable for its intended use case.
+This philosophy ensures the plugin remains focused, predictable, and valuable for its intended use case while maintaining strong integration with the Stratum observability framework.

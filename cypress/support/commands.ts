@@ -24,6 +24,24 @@ declare global {
             stopEventCounterServer(): Chainable<void>
 
             /**
+             * Custom command to set the active run ID for coordinating with the app
+             * @example cy.setActiveRunId('cypress-run-123')
+             */
+            setActiveRunId(runId?: string): Chainable<any>
+
+            /**
+             * Custom command to get the current active run ID
+             * @example cy.getActiveRunId()
+             */
+            getActiveRunId(): Chainable<any>
+
+            /**
+             * Custom command to clear the active run ID
+             * @example cy.clearActiveRunId()
+             */
+            clearActiveRunId(): Chainable<any>
+
+            /**
              * Custom command to publish an event
              * @example cy.publishEvent('user-login', 'test-run-123')
              */
@@ -209,4 +227,46 @@ Cypress.Commands.add('cleanupTestData', () => {
             }
         })
     })
-}) 
+})
+
+// Active Run ID Management Commands
+Cypress.Commands.add('setActiveRunId', (runId?: string) => {
+    const body = runId ? { runId } : {};
+
+    cy.request({
+        method: 'POST',
+        url: '/api/active-run-id',
+        body,
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    }).then((response) => {
+        expect(response.status).to.eq(200)
+        const actualRunId = response.body.runId
+        cy.log(`Active run ID set to: ${actualRunId}`)
+        return cy.wrap(actualRunId)
+    })
+})
+
+Cypress.Commands.add('getActiveRunId', () => {
+    return cy.request({
+        method: 'GET',
+        url: '/api/active-run-id'
+    }).then((response) => {
+        expect(response.status).to.eq(200)
+        return response.body.runId
+    })
+})
+
+Cypress.Commands.add('clearActiveRunId', () => {
+    cy.request({
+        method: 'DELETE',
+        url: '/api/active-run-id'
+    }).then((response) => {
+        expect(response.status).to.eq(200)
+        cy.log('Active run ID cleared')
+    })
+})
+
+// Export to make this a proper module and fix TypeScript errors
+export { } 

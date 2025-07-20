@@ -81,15 +81,8 @@ export class EventCounterPublisher extends BasePublisher {
 
   private async sendCatalogToServer(): Promise<void> {
     try {
-      // Get the test name from the window (if running in browser)
-      let statsId = "default";
-
-      if (typeof window !== "undefined" && (window as any).__eventStatsId) {
-        statsId = (window as any).__eventStatsId;
-      }
-
-      // Use configured dashboard URL
-      const apiUrl = `${this.dashboardUrl}/api/catalog?statsId=${encodeURIComponent(statsId)}`;
+      // Server automatically uses active run ID, no need to fetch it
+      const apiUrl = `${this.dashboardUrl}/api/catalog`;
 
       if (EventCounterPublisher.enableLogging) {
         console.log("[EventCounterPublisher] Sending catalog to API:", {
@@ -186,15 +179,8 @@ export class EventCounterPublisher extends BasePublisher {
 
     // Send event update to API for persistent storage
     try {
-      // Get the test name from the window (if running in browser)
-      let statsId = "default";
-
-      if (typeof window !== "undefined" && (window as any).__eventStatsId) {
-        statsId = (window as any).__eventStatsId;
-      }
-
-      // Use configured dashboard URL
-      const apiUrl = `${this.dashboardUrl}/api/events-stats?statsId=${encodeURIComponent(statsId)}`;
+      // Server automatically uses active run ID, no need to fetch it
+      const apiUrl = `${this.dashboardUrl}/api/events-stats`;
 
       if (EventCounterPublisher.enableLogging) {
         console.log("[EventCounterPublisher] Sending event to API:", {

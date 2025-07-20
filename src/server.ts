@@ -17,6 +17,11 @@ const DEFAULT_MAX_RUNS = 25;
 const port = parseInt(process.env.EVENT_COUNTER_PORT || DEFAULT_PORT.toString(), 10);
 const maxRuns = parseInt(process.env.EVENT_COUNTER_MAX_RUNS || DEFAULT_MAX_RUNS.toString(), 10);
 
+// Active run ID state - this coordinates between Cypress and the app
+let activeRunId: string | null = null;
+let activeRunIdSetTime: number | null = null;
+const ACTIVE_RUN_ID_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
+
 // Validate configuration
 if (isNaN(port) || port < 1 || port > 65535) {
   console.error("[ERROR] Invalid port number. Must be between 1 and 65535.");
@@ -53,6 +58,38 @@ function getCatalogFile(statsId?: string) {
   }
 
   return path.join(dataDir, "event-catalog.json");
+}
+
+// Helper functions for active run ID management
+function setActiveRunId(runId: string): void {
+  activeRunId = runId;
+  activeRunIdSetTime = Date.now();
+  console.log(`[INFO] 🎯 Active run ID set to: ${runId}`);
+}
+
+function getActiveRunId(): string | null {
+  // Check if active run ID has expired
+  if (activeRunId && activeRunIdSetTime) {
+    const now = Date.now();
+    if (now - activeRunIdSetTime > ACTIVE_RUN_ID_TIMEOUT) {
+      console.log(`[INFO] ⏰ Active run ID expired, clearing: ${activeRunId}`);
+      clearActiveRunId();
+      return null;
+    }
+  }
+  return activeRunId;
+}
+
+function clearActiveRunId(): void {
+  if (activeRunId) {
+    console.log(`[INFO] 🗑️ Clearing active run ID: ${activeRunId}`);
+  }
+  activeRunId = null;
+  activeRunIdSetTime = null;
+}
+
+function generateRunId(): string {
+  return `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 interface EventCount {
@@ -169,8 +206,11 @@ app.get("/", (_req: Request, res: Response) => {
 
 // API: Get event stats
 app.get("/api/events-stats", (req: Request, res: Response) => {
-  const statsId = req.query.statsId as string | undefined;
-  const statsFile = getStatsFile(statsId);
+  const explicitStatsId = req.query.statsId as string | undefined;
+  const effectiveStatsId = explicitStatsId || getActiveRunId() || undefined;
+  const statsFile = getStatsFile(effectiveStatsId);
+
+  console.log(`[INFO] 📖 Get stats request - explicit: ${explicitStatsId || 'none'}, effective: ${effectiveStatsId || 'default'}`);
 
   if (!fs.existsSync(statsFile)) {
     return res.json({
@@ -187,11 +227,12 @@ app.get("/api/events-stats", (req: Request, res: Response) => {
 // API: Update event stats (POST)
 app.post("/api/events-stats", (req: Request, res: Response) => {
   try {
-    const statsId = req.query.statsId as string | undefined;
-    const statsFile = getStatsFile(statsId);
+    const explicitStatsId = req.query.statsId as string | undefined;
+    const effectiveStatsId = explicitStatsId || getActiveRunId() || undefined;
+    const statsFile = getStatsFile(effectiveStatsId);
     const { eventKey, timestamp } = req.body;
 
-    console.log(`[INFO] 📊 Event received: ${eventKey} for run: ${statsId || 'default'}`);
+    console.log(`[INFO] 📊 Event received: ${eventKey} - explicit: ${explicitStatsId || 'none'}, effective: ${effectiveStatsId || 'default'}`);
 
     // Validate required fields
     if (!eventKey || typeof eventKey !== 'string') {
@@ -218,7 +259,7 @@ app.post("/api/events-stats", (req: Request, res: Response) => {
     stats.totalEvents++;
 
     fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
-    console.log(`[INFO] 💾 Stats updated: ${stats.totalEvents} total events for run: ${statsId || 'default'}`);
+    console.log(`[INFO] 💾 Stats updated: ${stats.totalEvents} total events for run: ${effectiveStatsId || 'default'}`);
 
     // Check if cleanup is needed after updating stats
     // Skip auto-cleanup during testing to prevent interference, unless explicitly enabled
@@ -255,6 +296,32 @@ app.put("/api/events-stats", (req: Request, res: Response) => {
   fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
   console.log(`[INFO] 🔄 Stats reset for run: ${statsId || 'default'}`);
   res.json({ success: true });
+});
+
+// API: Reset event stats for a specific run
+app.post("/api/events-stats/reset", (req: Request, res: Response) => {
+  try {
+    const explicitStatsId = req.query.statsId as string | undefined;
+    const effectiveStatsId = explicitStatsId || getActiveRunId() || undefined;
+    const statsFile = getStatsFile(effectiveStatsId);
+
+    console.log(`[INFO] 🔄 Stats reset for run: ${effectiveStatsId}`);
+
+    // Create empty stats
+    const emptyStats = {
+      events: {},
+      startTime: new Date().toISOString(),
+      totalEvents: 0,
+    };
+
+    // Write empty stats to file
+    fs.writeFileSync(statsFile, JSON.stringify(emptyStats, null, 2));
+
+    res.json({ success: true, runId: effectiveStatsId });
+  } catch (error) {
+    console.error("[ERROR] Failed to reset stats:", error);
+    res.status(500).json({ error: "Failed to reset stats" });
+  }
 });
 
 // API: Manual cleanup endpoint
@@ -385,8 +452,11 @@ app.get("/api/runs", (_req: Request, res: Response) => {
 
 // API: Get catalog for a specific run
 app.get("/api/catalog", (req: Request, res: Response) => {
-  const statsId = req.query.statsId as string | undefined;
-  const catalogPath = getCatalogFile(statsId);
+  const explicitStatsId = req.query.statsId as string | undefined;
+  const effectiveStatsId = explicitStatsId || getActiveRunId() || undefined;
+  const catalogPath = getCatalogFile(effectiveStatsId);
+
+  console.log(`[INFO] 📖 Get catalog request - explicit: ${explicitStatsId || 'none'}, effective: ${effectiveStatsId || 'default'}`);
 
   if (!fs.existsSync(catalogPath)) {
     return res.status(404).json({ error: "event-catalog.json not found" });
@@ -405,15 +475,16 @@ app.get("/api/catalog", (req: Request, res: Response) => {
 // API: Update catalog for a specific run
 app.post("/api/catalog", (req: Request, res: Response) => {
   try {
-    const statsId = req.query.statsId as string | undefined;
-    const catalogPath = getCatalogFile(statsId);
+    const explicitStatsId = req.query.statsId as string | undefined;
+    const effectiveStatsId = explicitStatsId || getActiveRunId() || undefined;
+    const catalogPath = getCatalogFile(effectiveStatsId);
     const catalog = req.body;
 
-    console.log(`[INFO] 📚 Catalog update for run: ${statsId || 'default'} with ${Object.keys(catalog).length} events`);
+    console.log(`[INFO] 📚 Catalog update - explicit: ${explicitStatsId || 'none'}, effective: ${effectiveStatsId || 'default'} with ${Object.keys(catalog).length} events`);
 
     // Validate that catalog is an object
     if (!catalog || typeof catalog !== 'object') {
-      console.warn(`[WARN] Invalid catalog received for run: ${statsId || 'default'}`);
+      console.warn(`[WARN] Invalid catalog received for run: ${effectiveStatsId || 'default'}`);
       return res.status(400).json({ error: "Catalog must be an object" });
     }
 
@@ -426,6 +497,56 @@ app.post("/api/catalog", (req: Request, res: Response) => {
     console.error("[ERROR] Failed to update catalog:", error);
     res.status(500).json({ error: "Failed to update catalog" });
   }
+});
+
+// API: Get active run ID
+app.get("/api/active-run-id", (req: Request, res: Response) => {
+  const currentActiveRunId = getActiveRunId();
+
+  if (currentActiveRunId) {
+    console.log(`[INFO] 📖 Active run ID requested: ${currentActiveRunId}`);
+    res.json({ runId: currentActiveRunId });
+  } else {
+    console.log("[INFO] 📖 No active run ID set");
+    res.json({ runId: null });
+  }
+});
+
+// API: Set active run ID (for Cypress to call)
+app.post("/api/active-run-id", (req: Request, res: Response) => {
+  try {
+    const { runId } = req.body;
+
+    if (!runId) {
+      // Generate a new run ID if none provided
+      const newRunId = generateRunId();
+      setActiveRunId(newRunId);
+      console.log(`[INFO] 🆔 Generated new run ID: ${newRunId}`);
+      return res.json({ runId: newRunId, generated: true });
+    }
+
+    if (typeof runId !== 'string') {
+      return res.status(400).json({ error: "runId must be a string" });
+    }
+
+    setActiveRunId(runId);
+    res.json({ runId, generated: false });
+  } catch (error) {
+    console.error("[ERROR] Failed to set active run ID:", error);
+    res.status(500).json({ error: "Failed to set active run ID" });
+  }
+});
+
+// API: Clear active run ID (for cleanup)
+app.delete("/api/active-run-id", (req: Request, res: Response) => {
+  const wasActive = activeRunId;
+  clearActiveRunId();
+
+  res.json({
+    success: true,
+    wasActive: wasActive !== null,
+    clearedRunId: wasActive
+  });
 });
 
 // Global error handler for JSON parsing errors
