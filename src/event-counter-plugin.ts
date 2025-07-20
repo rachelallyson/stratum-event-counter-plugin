@@ -10,7 +10,7 @@ export interface EventCounterPluginOptions {
 export class EventCounterPlugin extends BasePlugin<any, EventCounterPluginOptions> {
   public name = "event-counter";
   public options: Required<EventCounterPluginOptions>;
-  private publisher: EventCounterPublisher;
+  public publishers: EventCounterPublisher[];
 
   constructor(options: EventCounterPluginOptions = {}) {
     super();
@@ -21,11 +21,8 @@ export class EventCounterPlugin extends BasePlugin<any, EventCounterPluginOption
       ...options
     };
     EventCounterPublisher.setLogging(this.options.enableLogging);
-    this.publisher = new EventCounterPublisher(this.options.dashboardUrl, this.options.catalog);
-  }
-
-  getPublishers() {
-    return [this.publisher];
+    const publisher = new EventCounterPublisher(this.options.dashboardUrl, this.options.catalog);
+    this.publishers = [publisher];
   }
 
   onRegister() {
