@@ -22,6 +22,7 @@
         "build": "tsc",
         "postbuild": "cp src/dashboard.html dist/dashboard.html && chmod +x dist/server.js",
         "postinstall": "chmod +x dist/server.js",
+        "prepublishOnly": "rm -rf dist/data && npm run build",
         "serve": "node dist/server.js",
         "server": "node dist/server.js",
         "start": "node dist/server.js",
